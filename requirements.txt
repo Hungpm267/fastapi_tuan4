@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+SQLAlchemy
+pydantic
+psycopg2-binary
+fastapi-mail          # <--- Thêm dòng này
+pydantic-settings     # <--- Thêm dòng này (để quản lý cấu hình)
+apscheduler
+jinja2                # <--- Thêm dòng này (dùng cho email template)
