@@ -11,7 +11,13 @@ class Settings(BaseSettings):
     MAIL_FROM_NAME: str = "My FastAPI App"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
-
+    
+    # --- THÊM CÁC DÒNG NÀY ---
+    SECRET_KEY: SecretStr
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # --------------------------
+    
     class Config:
         # Tên file để tải biến môi trường
         env_file = ".env"

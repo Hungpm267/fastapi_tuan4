@@ -15,3 +15,14 @@ def get_db():
         
 def create_table():
     Base.metadata.create_all(bind = engine)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    # Tác dụng chính: Quản lý việc kết nối và phiên làm việc (session) với database.

@@ -1,5 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException
-import services, models, schemas
+
+
+# --- IMPORT MỚI ---
+from fastapi.security import OAuth2PasswordRequestForm # Thêm class này
+from datetime import timedelta # Thêm timedelta
+import services, models, schemas, auth # <-- Thêm auth
 from db import get_db, engine, create_table
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # <--- SỬA DÒNG NÀY
@@ -10,6 +14,11 @@ from pydantic import EmailStr
 from config import settings # <-- Import cấu hình
 from jinja2 import Environment, FileSystemLoader # <-- Import Jinja2
 import datetime
+
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile # Thêm File, UploadFile
+from fastapi.staticfiles import StaticFiles # Thêm StaticFiles
+from fastapi.responses import JSONResponse # Thêm JSONResponse (tùy chọn)
+
 
 # --- Cấu hình Scheduler ---
 # DÒNG SỬA 2: Thay thế tên class
@@ -75,12 +84,12 @@ async def lifespan(app: FastAPI):
     create_table()
     
     # Lên lịch cho cron job
-    print("Thêm cron job 'send_email_cron' chạy mỗi phút...")
-    scheduler.add_job(send_email_cron, "interval", minutes=1)
+    # print("Thêm cron job 'send_email_cron' chạy mỗi phút...")
+    # scheduler.add_job(send_email_cron, "interval", minutes=1)
     
-    # Khởi động scheduler
-    print("Khởi động scheduler...")
-    scheduler.start()
+    # # Khởi động scheduler
+    # print("Khởi động scheduler...")
+    # scheduler.start()
 
     yield # Ứng dụng chạy ở đây
 
@@ -91,12 +100,73 @@ async def lifespan(app: FastAPI):
 # Khởi tạo ứng dụng FastAPI với lifespan
 app = FastAPI(lifespan=lifespan)
 
+# --- THÊM CÁC ENDPOINT XÁC THỰC ---
+
+@app.post("/signup", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
+def signup_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    """
+    Endpoint để đăng ký user mới.
+    """
+    # Kiểm tra xem user đã tồn tại chưa
+    db_user = services.get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Tạo user mới
+    return services.create_user(db=db, user=user)
+
+
+@app.post("/signin", response_model=schemas.Token)
+def signin_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(), 
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint để đăng nhập, nhận về Access Token.
+    Sử dụng form data (username & password) theo chuẩn OAuth2.
+    """
+    
+    # 1. Lấy user từ DB (form_data.username chính là email)
+    user = services.get_user_by_email(db, email=form_data.username)
+    
+    # 2. Kiểm tra user có tồn tại VÀ mật khẩu có đúng không
+    if not user or not auth.verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    # 3. Tạo Access Token
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth.create_access_token(
+        # "sub" (subject) là tên định danh user trong token
+        data={"sub": user.email}, 
+        expires_delta=access_token_expires
+    )
+    
+    # 4. Trả về token
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/users/me", response_model=schemas.User)
+def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
+    """
+    Một endpoint được bảo vệ. 
+    Chỉ user đã đăng nhập (cung cấp token hợp lệ) mới truy cập được.
+    """
+    return current_user
 
 # --- CÁC API ENDPOINT CỦA BẠN (giữ nguyên) ---
 
 @app.get("/books/",  response_model=list[schemas.Book])
 def get_all_books(db: Session = Depends(get_db)):
     return services.get_all_book(db)
+
+
 
 @app.get("/books/{id}", response_model=schemas.Book)
 def get_book_by_id(id: int, db: Session = Depends(get_db)):
@@ -105,21 +175,111 @@ def get_book_by_id(id: int, db: Session = Depends(get_db)):
         return book_queryset
     raise HTTPException(status_code=404, detail="id sach ko hop le")
 
+
 @app.post("/books/", response_model=schemas.Book)
-def create_new_book(book: schemas.BookCreate, db: Session=Depends(get_db)):
+def create_new_book(book: schemas.BookCreate, 
+                    db: Session=Depends(get_db), 
+                    current_user: models.User = Depends(auth.get_current_user)
+                    ):
+    # Dòng code bên dưới chỉ chạy nếu 'get_current_user' thành công
+    print(f"User {current_user.email} đang tạo sách...")
     return services.create_book(db, book)
 
 @app.put("/books/{id}", response_model=schemas.Book)
-def update_book(book: schemas.BookCreate, id: int, db: Session= Depends(get_db)):
+def update_book(book: schemas.BookCreate, 
+                id: int, 
+                db: Session= Depends(get_db), 
+                current_user: models.User = Depends(auth.get_current_user)
+                ):
     db_update = services.update_book(db, book, id)
     if not db_update:
         raise HTTPException(status_code=404, detail="book not found")
     return db_update
 
 @app.delete("/books/{id}", response_model=schemas.Book)
-def delete_book(id: int, db: Session=Depends(get_db)):
+def delete_book(id: int, 
+                db: Session=Depends(get_db), 
+                current_user: models.User = Depends(auth.get_current_user) # <-- Bảo vệ
+                ):
     """this api for delete a book with its id"""
     delete_entry = services.delete_book(db, id)
     if delete_entry:
         return delete_entry
     raise HTTPException(status_code=404, detail="Book not found")
+
+# ====================CATEGORY=================
+@app.get("/categories/", response_model=list[schemas.Category])
+def get_all_categories(db: Session= Depends(get_db)):
+    return services.get_all_category(db)
+
+@app.get("/categories/{id}", response_model=schemas.Category)
+def get_category_by_id(id: int, db: Session=Depends(get_db)):
+    category_queryset = services.get_category(db, id)
+    if category_queryset:
+        return category_queryset
+    raise HTTPException(status_code=404, detail='category ko hop le')
+
+@app.post("/categories/", response_model=schemas.Category)
+def create_new_category(category: schemas.CategoryCreate,
+                        db: Session=Depends(get_db),
+                        current_user: models.Category=Depends(auth.get_current_user)
+                        ):
+    print(f"user {current_user} is creating new category...")
+    return services.create_category(db, category)
+
+@app.put("/categories/{id}", response_model= schemas.Category)
+def update_category(category: schemas.CategoryCreate,
+                    id: int,
+                    db: Session = Depends(get_db),
+                    current_user: models.User = Depends(auth.get_current_user)
+                    ):
+    db_update = services.update_category(db, category, id)
+    if not db_update:
+        raise HTTPException(status_code=404, detail="category not found")
+    return db_update
+        
+@app.delete("/categories/{id}", response_model=schemas.Category)
+def delete_category(id: int,
+                    db: Session=Depends(get_db),
+                    current_user: models.User = Depends(auth.get_current_user)
+                    ):
+    delete_entry = services.delete_category(db, id)
+    if delete_entry:
+        return delete_entry
+    raise HTTPException(status_code=404, detail="category not found")
+
+# --- THÊM ENDPOINT UPLOAD ẢNH CATEGORY ---
+@app.post("/categories/{category_id}/upload-image/", response_model=schemas.Category)
+async def upload_category_image(
+    category_id: int,
+    file: UploadFile = File(...), # Nhận file upload
+    db: Session = Depends(get_db)
+    # current_user: models.User = Depends(auth.get_current_user) # Bật nếu cần xác thực
+):
+    """
+    Upload ảnh cho một Category theo ID.
+    """
+    try:
+        updated_category = await services.save_category_image(db=db, category_id=category_id, file=file)
+
+        # Tạo URL đầy đủ cho ảnh để trả về (tùy chọn)
+        # Giả sử server chạy tại http://localhost:8000
+        # Bạn có thể lấy base URL từ request nếu cần linh động hơn
+        base_url = "http://localhost:8000" # Hoặc lấy từ request
+        image_full_url = f"{base_url}/static/{updated_category.image_path}" if updated_category.image_path else None
+
+        # Tạo response dictionary thủ công để thêm image_url
+        response_data = schemas.Category.model_validate(updated_category).model_dump()
+        response_data["image_url"] = image_full_url
+
+        return JSONResponse(content=response_data)
+        # Hoặc trả về trực tiếp nếu schema Category đã có image_url và bạn xử lý nó trong service/model
+        # return updated_category
+
+    except HTTPException as e:
+        # Ném lại lỗi HTTP đã được xử lý trong service
+        raise e
+    except Exception as e:
+        # Bắt các lỗi không mong muốn khác
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {e}")
+        
