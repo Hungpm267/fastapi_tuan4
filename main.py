@@ -210,7 +210,7 @@ def delete_book(id: int,
 # ====================CATEGORY=================
 @app.get("/categories/", response_model=list[schemas.Category])
 def get_all_categories(db: Session= Depends(get_db)):
-    return services.get_all_category(db)
+    return services.get_root_category(db)
 
 @app.get("/categories/{id}", response_model=schemas.Category)
 def get_category_by_id(id: int, db: Session=Depends(get_db)):
@@ -283,3 +283,74 @@ async def upload_category_image(
         # Bắt các lỗi không mong muốn khác
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {e}")
         
+        
+# ====================PRODUCT=================
+
+# ====================PRODUCT=================
+
+@app.post("/products/", response_model=schemas.Product)
+def create_new_product(product: schemas.ProductCreate,
+                       db: Session = Depends(get_db),
+                       current_user: models.User = Depends(auth.get_current_user)
+                       ):
+    """
+    Tạo sản phẩm mới và liên kết với các category IDs.
+    """
+    return services.create_product(db, product)
+    
+@app.get("/products/", response_model=list[schemas.Product])
+def get_all_products(db: Session = Depends(get_db)):
+    """
+    Lấy tất cả sản phẩm.
+    """
+    return services.get_all_products(db)
+
+@app.get("/products/{id}", response_model=schemas.Product)
+def get_product_by_id(id: int, db: Session = Depends(get_db)):
+    """
+    Lấy một sản phẩm theo ID.
+    """
+    product_queryset = services.get_product(db, id)
+    if product_queryset:
+        return product_queryset
+    raise HTTPException(status_code=404, detail='product ko hop le')
+
+# --- THÊM ENDPOINT MỚI NÀY ---
+@app.post("/products/{product_id}/upload-image/", response_model=schemas.ProductImage)
+async def upload_product_image(
+    product_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user) # Bảo vệ endpoint
+):
+    """
+    Upload một ảnh cho sản phẩm.
+    Bạn có thể gọi endpoint này nhiều lần để upload nhiều ảnh.
+    Ảnh đầu tiên sẽ tự động được đặt làm thumbnail của sản phẩm.
+    """
+    try:
+        # Gọi hàm service xử lý tất cả logic
+        return await services.save_product_image(db=db, product_id=product_id, file=file)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {e}")
+# ... (Endpoint create_new_product và get_product_by_id giữ nguyên) ...
+    
+@app.get("/products/", response_model=list[schemas.Product])
+def get_all_products(
+    db: Session = Depends(get_db),
+    skip: int = 0,  # <-- Thêm dòng này
+    limit: int = 10 # <-- Thêm dòng này
+):
+    """
+    Lấy tất cả sản phẩm (có phân trang).
+    
+    Cách dùng:
+    - /products/              (Lấy trang 1 - 10 sản phẩm đầu)
+    - /products/?skip=0&limit=10 (Lấy trang 1)
+    - /products/?skip=10&limit=10 (Lấy trang 2)
+    - /products/?skip=20&limit=10 (Lấy trang 3)
+    """
+    # Sửa lại dòng này
+    return services.get_all_products(db, skip=skip, limit=limit)

@@ -12,3 +12,5 @@ passlib[bcrypt]
 python-jose
 python-multipart
 bcrypt==4.3.0
+Pillow
+python-multipart
