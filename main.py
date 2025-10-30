@@ -308,12 +308,25 @@ def get_all_products(db: Session = Depends(get_db)):
 @app.get("/products/{id}", response_model=schemas.Product)
 def get_product_by_id(id: int, db: Session = Depends(get_db)):
     """
-    Lấy một sản phẩm theo ID.
+    Lấy một sản phẩm theo ID VÀ TĂNG LƯỢT XEM.
     """
     product_queryset = services.get_product(db, id)
-    if product_queryset:
-        return product_queryset
-    raise HTTPException(status_code=404, detail='product ko hop le')
+    
+    if not product_queryset:
+        raise HTTPException(status_code=404, detail='product ko hop le')
+
+    # --- THÊM LOGIC TĂNG LƯỢT XEM ---
+    # Tăng lượt xem lên 1
+    product_queryset.view_count += 1
+    
+    # Lưu thay đổi vào CSDL
+    db.commit()
+    
+    # Làm mới (refresh) để đảm bảo dữ liệu trả về là mới nhất
+    db.refresh(product_queryset)
+    # ----------------------------------
+    
+    return product_queryset
 
 # --- THÊM ENDPOINT MỚI NÀY ---
 @app.post("/products/{product_id}/upload-image/", response_model=schemas.ProductImage)

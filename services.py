@@ -274,17 +274,4 @@ async def save_product_image(db: Session, product_id: int, file: UploadFile) -> 
     return db_image
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 # Tác dụng chính: Chứa logic nghiệp vụ (business logic) hay còn gọi là các hàm CRUD (Create, Read, Update, Delete).

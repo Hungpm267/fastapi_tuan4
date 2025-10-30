@@ -59,6 +59,10 @@ class Product(Base):
     price = Column(Integer, nullable=False)
     stock_quantity = Column(Integer, nullable=False)
     
+    # --- THÊM DÒNG NÀY ---
+    view_count = Column(Integer, default=0, nullable=False)
+    # -----------------------
+    
     # Quan hệ Một-Nhiều (One-to-Many) với ProductImage
     images = relationship("ProductImage", back_populates="product")
     
@@ -67,7 +71,7 @@ class Product(Base):
         "Category",                  # <--- Tên class Model để liên kết
         secondary=product_category_table, # <--- Tên Bảng trung gian
         back_populates="products"    # <--- Tên thuộc tính ở class Category
-    )
+    )   
 
     
 class ProductImage(Base):
@@ -78,7 +82,7 @@ class ProductImage(Base):
     product_id = Column(Integer, ForeignKey("Products.id"), nullable=False)
 
     # Quan hệ ngược lại (Many-to-One)
-    product = relationship("Product", back_populates="images")
+    product = relationship("Product", back_populate="images")
 
 
 class Category(Base):

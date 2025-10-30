@@ -71,8 +71,13 @@ class ProductCreate(ProductBase):
     # Khi tạo sản phẩm, chúng ta muốn nhận
     # một danh sách các ID của Category để liên kết
     categories: List[int] = [] 
+    
+# kiểu dữ liệu typehint theo 1 công thưc chung: tên_trường: Kiểu_Dữ_Liệu = Giá_Trị_Mặc_Định
 
 class Product(ProductBase):
+    # --- THÊM DÒNG NÀY ---
+    view_count: int
+    # -----------------------
     id: int
     
     # --- Hiển thị các mối quan hệ ---
